@@ -1,0 +1,53 @@
+# ── Repositórios clonados pelo scanner ─────────────────────────────────────────
+downloads/
+
+# ── Saídas geradas pelo scanner ────────────────────────────────────────────────
+resultado_varredura.csv
+dlq_release.csv
+
+# ── Segurança: nunca commitar tokens ou credenciais ────────────────────────────
+# Se você mover as credenciais para um .env, ele também fica fora do repo
+.env
+*.env
+secrets.py
+
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+ENV/
+
+# Distribuição / build
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Pytest / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── IDEs e editores ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ── Sistema operacional ─────────────────────────────────────────────────────────
+# Windows
+Thumbs.db
+desktop.ini
+
+# macOS
+.DS_Store
+
+# ── Logs ────────────────────────────────────────────────────────────────────────
+*.log
