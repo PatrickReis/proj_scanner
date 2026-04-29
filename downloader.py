@@ -1,9 +1,29 @@
 import os
 import csv
+import stat
+import shutil
 import requests
 from git import Repo, GitCommandError
 import config
 from pre_validate import filter_repos_by_name
+
+
+# ── Utilitário de remoção robusta (Windows read-only) ───────────────────────────
+
+def _robust_rmtree(path: str) -> None:
+    """
+    Remove uma árvore de diretórios de forma robusta.
+    No Windows, arquivos .git são read-only e causam falha no shutil.rmtree padrão.
+    O handler abaixo remove o flag e re-tenta a operação.
+    """
+    def _fix_readonly(func, fpath, excinfo):
+        try:
+            os.chmod(fpath, stat.S_IWRITE)
+            func(fpath)
+        except Exception:
+            pass  # melhor esforço — não propaga
+
+    shutil.rmtree(path, onerror=_fix_readonly)
 
 
 # ── Cabeçalhos padrão para todas as chamadas à API ──────────────────────────────
@@ -214,7 +234,9 @@ def download_repositories():
 
         except GitCommandError as e:
             error_msg = str(e)
-            if "Remote branch" in error_msg or "not found" in error_msg.lower():
+            error_lower = error_msg.lower()  # case-insensitive: Windows usa lowercase
+
+            if "remote branch" in error_lower or "not found" in error_lower:
                 motivo = f"Branch '{config.TARGET_BRANCH}' não encontrada"
             else:
                 motivo = f"GitCommandError: {error_msg[:200]}"
@@ -226,9 +248,15 @@ def download_repositories():
                 "motivo": motivo,
             })
 
-            # Remove pasta vazia deixada pelo git antes de falhar
-            if os.path.exists(target_path) and not os.listdir(target_path):
-                os.rmdir(target_path)
+            # Remove pasta parcialmente criada pelo git antes de falhar.
+            # No Windows, o git pode deixar uma pasta .git com arquivos read-only
+            # dentro de target_path → os.rmdir() falharia e quebraria o loop.
+            # _robust_rmtree lida com isso de forma segura.
+            try:
+                if os.path.exists(target_path):
+                    _robust_rmtree(target_path)
+            except Exception as cleanup_err:
+                print(f"[WARN] Não foi possível limpar '{target_path}': {cleanup_err}")
 
         except Exception as e:
             motivo = f"Erro inesperado: {str(e)[:200]}"

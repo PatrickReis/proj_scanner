@@ -1,25 +1,9 @@
 import os
-import stat
 import shutil
 import downloader
 import scanner
 import config
-
-
-def _robust_rmtree(path: str) -> None:
-    """
-    Remove uma árvore de diretórios de forma robusta em qualquer SO.
-
-    No Windows, arquivos dentro de pastas .git são marcados como read-only,
-    o que faz shutil.rmtree() falhar com PermissionError.
-    O onerror handler abaixo remove o flag read-only e tenta deletar novamente.
-    """
-    def _fix_readonly(func, fpath, excinfo):
-        # Remove o atributo read-only e tenta a operação novamente
-        os.chmod(fpath, stat.S_IWRITE)
-        func(fpath)
-
-    shutil.rmtree(path, onerror=_fix_readonly)
+from downloader import _robust_rmtree
 
 
 def main():
