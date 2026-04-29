@@ -69,3 +69,11 @@ OUTPUT_FILE = os.getenv("OUTPUT_FILE", os.path.join(OUT_DIR, "resultado_varredur
 
 # Nome do arquivo DLQ para repos sem a branch alvo
 DLQ_FILE = os.getenv("DLQ_FILE", os.path.join(OUT_DIR, "dlq_release.csv"))
+
+# Cache da listagem da API (nome|clone_url) — evita re-consultar o GitHub a cada run
+# Ignorado quando CLEAN_RUN=true (força nova consulta)
+REPOS_CACHE_FILE = os.getenv("REPOS_CACHE_FILE", os.path.join(OUT_DIR, "repos_cache.csv"))
+
+# Registro incremental dos repos já varridos com sucesso (nome|clone_url)
+# Se um repo constar aqui, o scanner o pula na próxima execução
+SCANNED_REPOS_FILE = os.getenv("SCANNED_REPOS_FILE", os.path.join(OUT_DIR, "repos_scanneados.csv"))

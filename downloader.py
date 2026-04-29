@@ -14,6 +14,44 @@ def _headers():
     }
 
 
+# ── Cache de listagem da API ────────────────────────────────────────────────────
+
+def _save_repos_cache(repos: list[dict]) -> None:
+    """Persiste a lista de repos (nome|clone_url) no arquivo de cache."""
+    try:
+        os.makedirs(os.path.dirname(config.REPOS_CACHE_FILE), exist_ok=True)
+        with open(config.REPOS_CACHE_FILE, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["nome", "clone_url"], delimiter="|")
+            writer.writeheader()
+            for r in repos:
+                writer.writerow({"nome": r["name"], "clone_url": r["clone_url"]})
+        print(f"[INFO] Cache de repos salvo em: {config.REPOS_CACHE_FILE} ({len(repos)} repos)")
+    except Exception as e:
+        print(f"[WARN] Não foi possível salvar o cache de repos: {e}")
+
+
+def _load_repos_cache() -> list[dict] | None:
+    """
+    Lê o cache local de repos.
+    Retorna lista de dicts com chaves 'name' e 'clone_url', ou None se não existir.
+    """
+    if not os.path.exists(config.REPOS_CACHE_FILE):
+        return None
+
+    repos = []
+    try:
+        with open(config.REPOS_CACHE_FILE, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f, delimiter="|")
+            for row in reader:
+                # Normaliza para o mesmo formato retornado pela API
+                repos.append({"name": row["nome"], "clone_url": row["clone_url"]})
+        print(f"[INFO] Cache de repos carregado: {config.REPOS_CACHE_FILE} ({len(repos)} repos) — pulando chamada à API.")
+        return repos
+    except Exception as e:
+        print(f"[WARN] Falha ao ler cache de repos, consultando API: {e}")
+        return None
+
+
 # ── Funções de listagem de repositórios ─────────────────────────────────────────
 
 def _paginate(url, params=None):
@@ -79,8 +117,8 @@ def _list_user_repos():
         return _paginate(url)
 
 
-def _get_all_repositories():
-    """Despacha para o método correto conforme SOURCE_TYPE."""
+def _fetch_repos_from_api() -> list[dict]:
+    """Consulta a API do GitHub e salva o resultado em cache."""
     source = config.SOURCE_TYPE.strip().lower()
 
     if source == "org":
@@ -93,8 +131,25 @@ def _get_all_repositories():
             "Use 'org' ou 'user'."
         )
 
-    print(f"[INFO] Total de repositórios encontrados: {len(repos)}")
+    print(f"[INFO] Total de repositórios encontrados via API: {len(repos)}")
+    _save_repos_cache(repos)
     return repos
+
+
+def _get_all_repositories() -> list[dict]:
+    """
+    Despacha para API ou cache conforme CLEAN_RUN.
+
+    - CLEAN_RUN=true  → sempre consulta a API (cache é regenerado).
+    - CLEAN_RUN=false → usa o cache local se existir; só vai à API se não houver cache.
+    """
+    if not config.CLEAN_RUN:
+        cached = _load_repos_cache()
+        if cached is not None:
+            return cached
+
+    # CLEAN_RUN=true OU cache inexistente → consulta a API
+    return _fetch_repos_from_api()
 
 
 # ── DLQ ────────────────────────────────────────────────────────────────────────
@@ -122,15 +177,17 @@ def _write_dlq(dlq_entries):
 
 def download_repositories():
     """
-    1. Lista todos os repos conforme SOURCE_TYPE (org | user).
-    2. Tenta clonar a branch TARGET_BRANCH de cada repo.
-    3. Repos sem a branch são gravados em dlq_release.csv.
+    1. Obtém lista de repos (API ou cache, conforme CLEAN_RUN).
+    2. Aplica REPO_FILTER por nome.
+    3. Tenta clonar a branch TARGET_BRANCH de cada repo não existente localmente.
+    4. Repos sem a branch são gravados em dlq_release.csv.
     """
     repos = _get_all_repositories()
 
     # Aplica filtro por nome (se REPO_FILTER estiver definido no .env)
     if config.REPO_FILTER:
         repos = filter_repos_by_name(repos, config.REPO_FILTER)
+
     dlq_entries = []
 
     for repo_info in repos:
