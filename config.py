@@ -5,6 +5,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── Comportamento da execução ──────────────────────────────────────────────────
+# CLEAN_RUN=true  → apaga a pasta DOWNLOAD_DIR antes de começar (padrão)
+# CLEAN_RUN=false → reutiliza downloads anteriores (útil para re-rodar a varredura
+#                   sem precisar baixar os repos de novo)
+_clean_run_raw = os.getenv("CLEAN_RUN", "true")
+CLEAN_RUN: bool = _clean_run_raw.strip().lower() in ("true", "1", "yes")
+
 # ── Modo de operação ───────────────────────────────────────────────────────────
 # "org"  → lista todos os repos de uma organização (requer GITHUB_ORG)
 # "user" → lista todos os repos do seu workspace pessoal (requer GITHUB_USER)
