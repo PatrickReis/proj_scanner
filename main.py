@@ -1,3 +1,4 @@
+import shutil
 import downloader
 import scanner
 import config
@@ -5,6 +6,15 @@ import os
 
 def main():
     print("=== INICIANDO PROCESSO DE VARREDURA DE REPOSITÓRIOS ===")
+
+    # 0. Limpeza: remove downloads anteriores e garante pasta de saída
+    if os.path.exists(config.DOWNLOAD_DIR):
+        print(f"\n[INFO] Limpando pasta de downloads: {config.DOWNLOAD_DIR}")
+        shutil.rmtree(config.DOWNLOAD_DIR)
+
+    os.makedirs(config.DOWNLOAD_DIR, exist_ok=True)
+    os.makedirs(config.OUT_DIR, exist_ok=True)
+    print(f"[INFO] Pasta de saída: {config.OUT_DIR}")
 
     # 1. Executa o Job de Download
     print("\n--- Passo 1: Download de Repositórios ---")

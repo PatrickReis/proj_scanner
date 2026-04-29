@@ -3,6 +3,7 @@ import csv
 import requests
 from git import Repo, GitCommandError
 import config
+from pre_validate import filter_repos_by_name
 
 
 # ── Cabeçalhos padrão para todas as chamadas à API ──────────────────────────────
@@ -23,7 +24,7 @@ def _paginate(url, params=None):
 
     while True:
         paged_params = {"per_page": 100, "page": page, **(params or {})}
-        response = requests.get(url, headers=headers, params=paged_params, timeout=30)
+        response = requests.get(url, headers=headers, params=paged_params, timeout=30, verify=False)
 
         if response.status_code == 401:
             raise PermissionError(
@@ -70,7 +71,7 @@ def _list_user_repos():
         # Workspace próprio (token owner) – inclui repos privados
         print("[INFO] Modo: WORKSPACE PESSOAL  →  (dono do token)")
         url = "https://api.github.com/user/repos"
-        return _paginate(url, params={"type": "all", "affiliation": "owner"})
+        return _paginate(url, params={"type": "owner"})
     else:
         # Workspace de outro usuário (apenas repos públicos)
         print(f"[INFO] Modo: WORKSPACE PESSOAL  →  '{user}'")
@@ -125,10 +126,11 @@ def download_repositories():
     2. Tenta clonar a branch TARGET_BRANCH de cada repo.
     3. Repos sem a branch são gravados em dlq_release.csv.
     """
-    if not os.path.exists(config.DOWNLOAD_DIR):
-        os.makedirs(config.DOWNLOAD_DIR)
-
     repos = _get_all_repositories()
+
+    # Aplica filtro por nome (se REPO_FILTER estiver definido no .env)
+    if config.REPO_FILTER:
+        repos = filter_repos_by_name(repos, config.REPO_FILTER)
     dlq_entries = []
 
     for repo_info in repos:
@@ -142,9 +144,12 @@ def download_repositories():
 
         print(f"[INFO] Clonando '{repo_name}' (branch: {config.TARGET_BRANCH})...")
 
+        # Injeta token na URL para autenticar repos privados
+        auth_url = clone_url.replace("https://", f"https://{config.GITHUB_TOKEN}@")
+
         try:
             Repo.clone_from(
-                clone_url,
+                auth_url,
                 target_path,
                 branch=config.TARGET_BRANCH,
             )

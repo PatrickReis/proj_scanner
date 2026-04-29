@@ -2,8 +2,7 @@
 downloads/
 
 # ── Saídas geradas pelo scanner ────────────────────────────────────────────────
-resultado_varredura.csv
-dlq_release.csv
+out/
 
 # ── Segurança: nunca commitar tokens ou credenciais ────────────────────────────
 # Se você mover as credenciais para um .env, ele também fica fora do repo

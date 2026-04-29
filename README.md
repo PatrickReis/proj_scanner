@@ -1,6 +1,6 @@
 # 🔍 Repo Scanner
 
-Ferramenta de segurança e auditoria que varre automaticamente repositórios GitHub em busca de padrões sensíveis de texto — como CPF, CNPJ, senhas e outros dados — e gera um relatório em CSV.
+Ferramenta de segurança e auditoria que varre automaticamente repositórios GitHub em busca de padrões sensíveis de texto — como CPF, CNPJ e outros dados — e gera relatórios em CSV.
 
 ---
 
@@ -9,35 +9,39 @@ Ferramenta de segurança e auditoria que varre automaticamente repositórios Git
 - [Arquitetura](#arquitetura)
 - [Pré-requisitos](#pré-requisitos)
 - [Instalação](#instalação)
-- [Configurando o Token do GitHub](#configurando-o-token-do-github)
+- [Configuração via .env](#configuração-via-env)
 - [Modos de Operação](#modos-de-operação)
   - [Modo Organização](#modo-organização-org)
   - [Modo Workspace Pessoal](#modo-workspace-pessoal-user)
 - [Executando o Projeto](#executando-o-projeto)
 - [Saídas Geradas](#saídas-geradas)
 - [Adicionando Novos Padrões de Busca](#adicionando-novos-padrões-de-busca)
+- [Dependências](#dependências)
 
 ---
 
 ## Arquitetura
 
 ```
-projeto_scanner/
-├── main.py            # Orquestrador: Download → Scan → Relatório
-├── config.py          # ⚙️  Ponto central de configuração
-├── downloader.py      # Integração com a API do GitHub + git clone
+proj_scanner/
+├── main.py            # Orquestrador: Limpeza → Download → Scan → Relatório
+├── config.py          # ⚙️  Ponto central de configuração (lê do .env)
+├── downloader.py      # Integração com a API do GitHub + git clone autenticado
 ├── scanner.py         # Varredura por Regex + geração de CSV
 ├── requirements.txt   # Dependências Python
-├── downloads/         # Pasta criada automaticamente com os repos clonados
-├── resultado_varredura.csv   # Relatório de ocorrências (gerado ao rodar)
-└── dlq_release.csv           # Repos sem a branch release (gerado ao rodar)
+├── .env               # Variáveis de configuração (NÃO commitar)
+├── .env.example       # Modelo de referência para o .env
+├── downloads/         # Criada e limpa automaticamente a cada execução
+└── out/               # Relatórios gerados (ignorada pelo git)
+    ├── resultado_varredura.csv
+    └── dlq_release.csv
 ```
 
 | Arquivo | Responsabilidade |
 |---|---|
-| `main.py` | Orquestra o fluxo completo |
-| `config.py` | **Único arquivo que você precisa editar** para configurar o projeto |
-| `downloader.py` | Lista repos via API do GitHub e realiza o `git clone` da branch `release` |
+| `main.py` | Orquestra o fluxo completo, limpa downloads e cria `out/` |
+| `config.py` | Lê todas as configurações do `.env` via `python-dotenv` |
+| `downloader.py` | Lista repos via API do GitHub e realiza `git clone` autenticado |
 | `scanner.py` | Varre os arquivos clonados por padrões Regex e salva em CSV |
 
 ---
@@ -54,10 +58,10 @@ projeto_scanner/
 
 ```bash
 # Clone este projeto
-git clone https://github.com/seu-usuario/projeto_scanner.git
-cd projeto_scanner
+git clone https://github.com/seu-usuario/proj_scanner.git
+cd proj_scanner
 
-# Crie e ative o ambiente virtual (recomendado)
+# Crie e ative o ambiente virtual
 python -m venv .venv
 
 # Windows
@@ -72,71 +76,74 @@ pip install -r requirements.txt
 
 ---
 
-## Configurando o Token do GitHub
+## Configuração via .env
 
-O projeto usa a **API REST do GitHub** para listar repositórios, portanto é necessário um **Personal Access Token (PAT)**.
+Todas as configurações são feitas através de um arquivo `.env` na raiz do projeto. **Nunca commite este arquivo** — ele já está no `.gitignore`.
 
-### Passo a passo para criar o token
+Crie o arquivo `.env` com base no modelo abaixo:
+
+```env
+# ── Modo de operação ──────────────────────────────────────────────────────────
+# "org"  → lista todos os repos de uma organização
+# "user" → lista todos os repos do workspace pessoal
+SOURCE_TYPE=org
+
+# ── GitHub Config ─────────────────────────────────────────────────────────────
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GITHUB_ORG=nome-da-sua-organizacao   # obrigatório se SOURCE_TYPE=org
+GITHUB_USER=                         # deixe vazio para usar o dono do token
+
+# ── Branch alvo para o clone ──────────────────────────────────────────────────
+TARGET_BRANCH=release
+
+# ── Paths (opcionais — os valores abaixo são os padrões) ─────────────────────
+DOWNLOAD_DIR=./downloads
+OUT_DIR=./out
+OUTPUT_FILE=./out/resultado_varredura.csv
+DLQ_FILE=./out/dlq_release.csv
+```
+
+### Criando o Token do GitHub (PAT)
 
 1. Acesse **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)**  
-   Link direto: [https://github.com/settings/tokens](https://github.com/settings/tokens)
-
+   Link: [https://github.com/settings/tokens](https://github.com/settings/tokens)
 2. Clique em **"Generate new token (classic)"**
-
-3. Dê um nome descritivo, ex: `repo-scanner`
-
-4. Selecione a validade (recomendado: 30 ou 90 dias)
-
-5. Marque os escopos conforme o modo de uso:
+3. Selecione os escopos conforme o modo:
 
    | Modo | Escopos necessários |
    |---|---|
-   | `org` (organização) | ✅ `repo` &nbsp;+&nbsp; ✅ `read:org` |
+   | `org` (organização) | ✅ `repo` + ✅ `read:org` |
    | `user` (workspace pessoal) | ✅ `repo` |
 
-6. Clique em **"Generate token"** e **copie o valor imediatamente** (ele não será exibido novamente)
+4. Copie o token gerado e cole em `GITHUB_TOKEN` no `.env`
 
-7. Cole o token em `config.py`:
-   ```python
-   GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-   ```
-
-> **⚠️ Segurança:** Nunca commite o token no repositório. Considere usar variável de ambiente:
-> ```python
-> import os
-> GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-> ```
+> **⚠️ Segurança:** O token concede acesso aos seus repositórios privados. Nunca o commite ou compartilhe.
 
 ---
 
 ## Modos de Operação
 
-A chave `SOURCE_TYPE` em `config.py` controla qual fonte de repositórios será usada.
+A chave `SOURCE_TYPE` no `.env` controla qual fonte de repositórios será usada.
 
 ### Modo Organização (`org`)
 
-Usa a API `GET /orgs/{org}/repos` — lista **todos os repositórios** (públicos e privados) de uma organização GitHub.
+Usa `GET /orgs/{org}/repos` — lista **todos os repositórios** (públicos e privados) de uma organização.
 
-**Configuração em `config.py`:**
-```python
-SOURCE_TYPE  = "org"
-
-GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"   # token com repo + read:org
-GITHUB_ORG   = "nome-da-sua-organizacao"            # ex: "minha-empresa"
-
-TARGET_BRANCH = "release"
+```env
+SOURCE_TYPE=org
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GITHUB_ORG=minha-empresa
+TARGET_BRANCH=release
 ```
 
-**Resultado esperado no terminal:**
+**Saída esperada:**
 ```
 [INFO] Modo: ORGANIZAÇÃO  →  'minha-empresa'
 [INFO]   Página 1: 100 repositório(s).
-[INFO]   Página 2: 42 repositório(s).
 [INFO] Total de repositórios encontrados: 142
 [INFO] Clonando 'api-pagamentos' (branch: release)...
 [SUCCESS] 'api-pagamentos' clonado com sucesso.
 [WARN] 'legacy-monolito': Branch 'release' não encontrada
-...
 ```
 
 ---
@@ -145,73 +152,76 @@ TARGET_BRANCH = "release"
 
 #### Opção A — Seus próprios repositórios (públicos + privados)
 
-Usa a API `GET /user/repos?affiliation=owner` — lista **todos os seus repos**, incluindo privados.
+Usa `GET /user/repos?type=owner` — lista **todos os seus repos**, incluindo privados.
 
-```python
-SOURCE_TYPE  = "user"
-
-GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"   # token com repo
-GITHUB_USER  = ""    # ← deixe vazio para usar o dono do token
-
-TARGET_BRANCH = "release"
+```env
+SOURCE_TYPE=user
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GITHUB_USER=          # ← deixe vazio para usar o dono do token
+TARGET_BRANCH=main
 ```
 
-**Resultado esperado no terminal:**
+**Saída esperada:**
 ```
 [INFO] Modo: WORKSPACE PESSOAL  →  (dono do token)
-[INFO]   Página 1: 78 repositório(s).
-[INFO] Total de repositórios encontrados: 78
-...
+[INFO]   Página 1: 24 repositório(s).
+[INFO] Total de repositórios encontrados: 24
 ```
 
 #### Opção B — Repositórios públicos de outro usuário
 
-Usa a API `GET /users/{user}/repos` — lista apenas os repos **públicos** do usuário informado.
+Usa `GET /users/{user}/repos` — lista apenas repos **públicos** do usuário informado.
 
-```python
-SOURCE_TYPE  = "user"
-
-GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-GITHUB_USER  = "nome-do-outro-usuario"   # ← username do GitHub
-
-TARGET_BRANCH = "release"
+```env
+SOURCE_TYPE=user
+GITHUB_USER=nome-do-outro-usuario
+TARGET_BRANCH=main
 ```
 
 ---
 
 ## Executando o Projeto
 
-Após configurar o `config.py`:
+Com o `.env` configurado e o venv ativo:
 
 ```bash
 python main.py
 ```
 
-O processo ocorre em três etapas automáticas:
+O processo ocorre em **4 etapas automáticas**:
 
 ```
 === INICIANDO PROCESSO DE VARREDURA DE REPOSITÓRIOS ===
 
+[INFO] Limpando pasta de downloads: ./downloads
+[INFO] Pasta de saída: ./out
+
 --- Passo 1: Download de Repositórios ---
-[INFO] Modo: ORGANIZAÇÃO  →  'minha-empresa'
-...
+[INFO] Modo: WORKSPACE PESSOAL  →  (dono do token)
+[INFO]   Página 1: 24 repositório(s).
+[INFO] Total de repositórios encontrados: 24
+[INFO] Clonando 'meu-repo' (branch: main)...
+[SUCCESS] 'meu-repo' clonado com sucesso.
 
 --- Passo 2: Analisando Arquivos ---
 [INFO] Iniciando varredura em: ./downloads
-...
 
 --- Passo 3: Gerando Relatório ---
-[SUCCESS] Resultados salvos em: resultado_varredura.csv
+[SUCCESS] Resultados salvos em: ./out/resultado_varredura.csv
 
 === PROCESSO FINALIZADO ===
-Total de ocorrências encontradas: 37
+Total de ocorrências encontradas: 300
 ```
+
+> **ℹ️ Nota:** A pasta `downloads/` é **apagada e recriada a cada execução** para garantir dados sempre atualizados.
 
 ---
 
 ## Saídas Geradas
 
-### `resultado_varredura.csv`
+Todos os relatórios são gravados na pasta `out/` (ignorada pelo git).
+
+### `out/resultado_varredura.csv`
 Contém todas as ocorrências dos padrões encontrados nos arquivos dos repositórios.
 
 | Coluna | Descrição |
@@ -231,20 +241,19 @@ cadastro-api|models.py|17|cnpj|    cnpj = models.CharField(max_length=18)
 
 ---
 
-### `dlq_release.csv`
-Gerado automaticamente com os repositórios que **não possuem a branch `release`**.
+### `out/dlq_release.csv`
+Repositórios que **não possuem a branch alvo** (`TARGET_BRANCH`).
 
 | Coluna | Descrição |
 |---|---|
 | `repositorio` | Nome do repositório |
-| `clone_url` | URL de clone do repositório |
-| `motivo` | Motivo da falha (branch não encontrada ou erro) |
+| `clone_url` | URL de clone |
+| `motivo` | Motivo da falha |
 
 Exemplo:
 ```
 repositorio|clone_url|motivo
 legacy-monolito|https://github.com/org/legacy-monolito.git|Branch 'release' não encontrada
-front-deprecated|https://github.com/org/front-deprecated.git|Branch 'release' não encontrada
 ```
 
 ---
@@ -256,13 +265,13 @@ Edite a lista `SEARCH_PATTERNS` em `config.py`:
 ```python
 SEARCH_PATTERNS = [
     r'cnpj',
+    r'documento',
+    r'cgc_.*',
     r'cpf',
-    r'password',
-    r'senha',
     # Exemplos de novos padrões:
     r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',  # e-mails
     r'(?:api[_-]?key|apikey)\s*=',                         # API keys
-    r'secret',                                             # secrets genéricos
+    r'secret',                                              # secrets genéricos
 ]
 ```
 
@@ -274,5 +283,11 @@ SEARCH_PATTERNS = [
 
 | Pacote | Uso |
 |---|---|
-| `GitPython` | Operações de `git clone` |
-| `requests` | Chamadas à API REST do GitHub |
+| `GitPython` | Operações de `git clone` autenticado |
+| `requests` | Chamadas à API REST do GitHub (com `verify=False` para ambientes corporativos) |
+| `python-dotenv` | Carrega variáveis do arquivo `.env` |
+
+Instale tudo com:
+```bash
+pip install -r requirements.txt
+```
