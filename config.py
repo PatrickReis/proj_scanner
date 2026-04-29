@@ -38,12 +38,17 @@ SEARCH_PATTERNS = [
 ]
 
 # ── Filtro de Repositórios (opcional) ────────────────────────────────────────
-# Expressão regular aplicada ao nome do repo antes do clone.
+# Lista de expressões regulares separadas por vírgula, aplicadas ao nome do repo.
+# Um repo é incluído se der match com QUALQUER um dos padrões.
 # Deixe vazio para processar todos os repositórios.
 # Exemplos:
-#   REPO_FILTER=.*chargeback   → apenas repos cujo nome contenha 'chargeback'
-#   REPO_FILTER=^api-          → apenas repos cujo nome comece com 'api-'
-REPO_FILTER = os.getenv("REPO_FILTER", "")
+#   REPO_FILTER=.*chargeback
+#   REPO_FILTER=spo_.* , .*chargeback
+#   REPO_FILTER=^api- , ^svc- , .*-core$
+_repo_filter_raw = os.getenv("REPO_FILTER", "")
+REPO_FILTER: list[str] = [
+    p.strip() for p in _repo_filter_raw.split(",") if p.strip()
+]
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 # Pasta onde os repositórios serão baixados localmente
